@@ -38,9 +38,10 @@ public class Account {
     @Column(name = "balance", nullable = false)
     private long balance;
 
-    @Version
-    @Column(name = "version", nullable = false)
-    private Long version;
+    // [1주차] 락 없는 상태를 재현하려고 잠시 끔. 2주차 "낙관적 락" 비교 때 다시 켬
+    // @Version
+    // @Column(name = "version", nullable = false)
+    // private Long version;
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
