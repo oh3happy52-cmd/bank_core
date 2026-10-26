@@ -40,4 +40,8 @@ dependencies {
 
 tasks.named('test') {
 	useJUnitPlatform()
+	// 테스트 안에서 System.out.println 으로 찍은 내용을 화면에 보여 줌
+	testLogging {
+		showStandardStreams = true
+	}
 }

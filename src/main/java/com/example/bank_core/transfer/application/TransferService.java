@@ -67,36 +67,39 @@ public class TransferService {
         return move(idempotencyKey, requestHash, TransferType.TRANSFER, from, to, amount);
     }
 
-    /**
-     * 입금, 이체가 같이 쓰는 "돈 옮기기" 5단계
+       /**
+     * 입금, 이체가 같이 쓰는 "돈 옮기기" 6단계
      * 같은 코드를 두 번 쓰지 않으려고 하나로 모음
      */
     private Transfer move(String idempotencyKey, String requestHash, TransferType type,
                           Account from, Account to, long amount) {
-        // 1. 송금 신청서 작성 ("처리 중" 상태로 시작)
+        // 1. 보내는 통장에서 돈 빼기
+        //    → 잔액이 부족하면 Account 안의 규칙이 오류를 던짐 → 전부 취소
+        from.debit(amount);
+
+        // 2. 받는 통장에 돈 넣기
+        to.credit(amount);
+
+        // 3. 바뀐 잔액을 지금 바로 DB에 반영 (flush: 트랜잭션 끝까지 미뤄 둔 UPDATE를 즉시 실행)
+        //    [1주차] 잔액 UPDATE를 신청서 INSERT보다 먼저 하는 이유:
+        //    transfer 테이블에 INSERT하면 MySQL이 외래 키 검사를 위해
+        //    참조하는 account 행에 공유 락(S lock)을 검.
+        //    여러 트랜잭션이 동시에 S lock을 잡은 뒤 UPDATE(X lock)를 시도하면 서로 기다리다 데드락 발생.
+        //    이번엔 갱신 손실(Lost Update)만 재현하려고 순서를 바꿈. 데드락은 2주차에 다룸
+        accountRepository.flush();
+
+        // 4. 송금 신청서 작성
         Transfer transfer = transferRepository.save(Transfer.request(
                 idempotencyKey, requestHash, type, from.getId(), to.getId(), amount));
 
-        // 2. 보내는 통장에서 돈 빼기
-        //    → 잔액이 부족하면 Account 안의 규칙이 오류를 던짐
-        //    → 그러면 @Transactional 덕분에 1번 신청서까지 전부 취소됨
-        from.debit(amount);
-
-        // 3. 받는 통장에 돈 넣기
-        to.credit(amount);
-
-        // 4. 가계부 두 줄 쓰기 (나간 쪽 DEBIT, 들어온 쪽 CREDIT)
-        //    balance_after: 이 거래 직후 잔액을 같이 적어 둠 (나중에 추적할 때 편함)
+        // 5. 가계부 두 줄 쓰기 (나간 쪽 DEBIT, 들어온 쪽 CREDIT)
         ledgerEntryRepository.save(LedgerEntry.record(
                 transfer.getId(), from.getId(), EntryType.DEBIT, amount, from.getBalance()));
         ledgerEntryRepository.save(LedgerEntry.record(
                 transfer.getId(), to.getId(), EntryType.CREDIT, amount, to.getBalance()));
 
-        // 5. 신청서에 "완료" 도장
+        // 6. 신청서에 "완료" 도장
         transfer.complete();
-
-        // 통장 잔액은 save를 안 해도 저장됨
-        // → 트랜잭션 안에서 꺼낸 통장은 Spring이 지켜보다가, 바뀐 내용을 끝날 때 자동 반영 (변경 감지)
         return transfer;
     }
 
