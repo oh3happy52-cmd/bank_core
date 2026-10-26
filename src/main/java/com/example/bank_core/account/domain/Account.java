@@ -58,6 +58,36 @@ public class Account {
         return account;
     }
 
+    // 돈 들어오기 (입금)
+    public void credit(long amount) {
+        validateAmount(amount);
+        validateActive();
+        this.balance += amount;
+    }
+
+    // 돈 나가기 (출금)
+    public void debit(long amount) {
+        validateAmount(amount);
+        validateActive();
+        // 고객 통장은 잔액보다 많이 뺄 수 없음. 은행 금고 통장은 예외
+        if (this.accountType == AccountType.CUSTOMER && this.balance < amount) {
+            throw new IllegalStateException("잔액이 부족합니다");
+        }
+        this.balance -= amount;
+    }
+
+    private void validateAmount(long amount) {
+        if (amount <= 0) {
+            throw new IllegalArgumentException("금액은 0보다 커야 합니다");
+        }
+    }
+
+    private void validateActive() {
+        if (this.status != AccountStatus.ACTIVE) {
+            throw new IllegalStateException("사용할 수 없는 계좌입니다");
+        }
+    }
+
     @PrePersist
     void onCreate() {
         LocalDateTime now = LocalDateTime.now();
