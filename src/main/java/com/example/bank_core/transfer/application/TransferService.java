@@ -45,15 +45,15 @@ public class TransferService {
     }
 
     /**
-     * [1주차] 락 없는 이체
-     * 동시에 요청이 몰리면 갱신 손실(Lost Update)이 발생함. 비교 실험용으로 남겨 둠
+     * [1주차] 락 없는 이체 (현재 API가 사용 중)
+     * 주의: 2주차에 Account의 @Version을 다시 켠 뒤로는, 저장 시 버전 검사가 자동으로 일어나서
+     *       실제로는 낙관적 락과 같은 방식으로 동작함. 최종 방식은 2주차 비교 후 결정
      */
     @Transactional
     public Transfer transfer(String idempotencyKey, String fromAccountNumber,
                              String toAccountNumber, long amount) {
         validateDifferentAccounts(fromAccountNumber, toAccountNumber);
 
-        // 일반 조회: 락 없이 읽음 → 여러 트랜잭션이 같은 잔액을 동시에 읽을 수 있음
         Account from = findAccount(fromAccountNumber);
         Account to = findAccount(toAccountNumber);
 
@@ -72,7 +72,6 @@ public class TransferService {
         validateDifferentAccounts(fromAccountNumber, toAccountNumber);
 
         // 데드락 방지: 두 계좌 중 계좌번호가 "작은 쪽부터" 항상 같은 순서로 잠금
-        // → A→B, B→A 요청이 동시에 와도 둘 다 같은 계좌부터 잠그려고 하므로 서로 엇갈려 기다리지 않음
         boolean fromFirst = fromAccountNumber.compareTo(toAccountNumber) < 0;
         String firstNumber = fromFirst ? fromAccountNumber : toAccountNumber;
         String secondNumber = fromFirst ? toAccountNumber : fromAccountNumber;
@@ -83,6 +82,25 @@ public class TransferService {
         // 잠근 순서와 상관없이, 원래 의미대로 보내는 쪽(from)과 받는 쪽(to)을 다시 맞춤
         Account from = fromFirst ? first : second;
         Account to = fromFirst ? second : first;
+
+        String requestHash = hash("TRANSFER|" + fromAccountNumber + "|" + toAccountNumber + "|" + amount);
+        return move(idempotencyKey, requestHash, TransferType.TRANSFER, from, to, amount);
+    }
+
+    /**
+     * [2주차] 낙관적 락 이체 (재시도 없음)
+     * 잠그지 않고 읽은 뒤, 저장(UPDATE)할 때 버전 번호를 비교.
+     * 그사이 다른 트랜잭션이 먼저 수정했으면 OptimisticLockingFailureException 발생 → 전부 롤백
+     * 재시도는 이 메서드를 호출하는 OptimisticLockTransferFacade가 담당
+     */
+    @Transactional
+    public Transfer transferWithOptimisticLock(String idempotencyKey, String fromAccountNumber,
+                                               String toAccountNumber, long amount) {
+        validateDifferentAccounts(fromAccountNumber, toAccountNumber);
+
+        // 일반 조회 (락 없음). 대신 각 계좌의 version 값도 같이 읽어 둠
+        Account from = findAccount(fromAccountNumber);
+        Account to = findAccount(toAccountNumber);
 
         String requestHash = hash("TRANSFER|" + fromAccountNumber + "|" + toAccountNumber + "|" + amount);
         return move(idempotencyKey, requestHash, TransferType.TRANSFER, from, to, amount);
@@ -100,11 +118,10 @@ public class TransferService {
         to.credit(amount);
 
         // 3. 바뀐 잔액을 지금 바로 DB에 반영 (flush: 트랜잭션 끝까지 미뤄 둔 UPDATE를 즉시 실행)
-        //    [1주차] 잔액 UPDATE를 신청서 INSERT보다 먼저 하는 이유:
-        //    transfer 테이블에 INSERT하면 MySQL이 외래 키 검사를 위해
-        //    참조하는 account 행에 공유 락(S lock)을 검.
-        //    락 없는 버전에서는 여러 트랜잭션이 동시에 S lock을 잡은 뒤 UPDATE(X lock)를 시도하다 데드락 발생.
-        //    비관적 락 버전은 처음부터 X lock을 잡고 있어서 이 문제와 무관함
+        //    - 잔액 UPDATE를 신청서 INSERT보다 먼저 하는 이유:
+        //      transfer 테이블에 INSERT하면 MySQL이 외래 키 검사를 위해 account 행에 공유 락(S lock)을 검.
+        //      여러 트랜잭션이 S lock을 잡은 뒤 UPDATE(X lock)를 시도하면 데드락이 생길 수 있음
+        //    - 낙관적 락에서는 이 시점에 버전 검사가 일어나서, 충돌하면 여기서 예외가 발생함
         accountRepository.flush();
 
         // 4. 송금 신청서 작성
