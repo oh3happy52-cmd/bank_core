@@ -33,22 +33,29 @@ public class TransferService {
     private final TransferRepository transferRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
 
-    /**
-     * 입금: 시스템 계좌 → 고객 계좌
-     */
-    @Transactional   // 아래 작업을 하나의 트랜잭션으로 처리. 중간에 실패하면 전부 롤백
-    public Transfer deposit(String idempotencyKey, String accountNumber, long amount) {
-        Account system = findSystemAccount();
-        Account customer = findAccount(accountNumber);
-
-        String requestHash = hash("DEPOSIT|" + accountNumber + "|" + amount);
-        return move(idempotencyKey, requestHash, TransferType.DEPOSIT, system, customer, amount);
+    // 순서대로 잠근 두 계좌를 원래 의미(보내는 쪽, 받는 쪽)대로 담는 상자
+    private record LockedAccounts(Account from, Account to) {
     }
 
     /**
-     * [1주차] 락 없는 이체 (현재 API가 사용 중)
+     * 입금: 시스템 계좌 → 고객 계좌 (비관적 락)
+     * 모든 입금이 같은 시스템 계좌를 사용하므로, 동시에 입금이 몰리면 충돌이 생김
+     * → 비관적 락으로 순서대로 처리 (낙관적 락이면 충돌한 입금이 실패함)
+     * 알려진 한계: 입금이 매우 많아지면 시스템 계좌 한 행에 대기가 몰리는 핫스팟이 됨
+     */
+    @Transactional   // 아래 작업을 하나의 트랜잭션으로 처리. 중간에 실패하면 전부 롤백
+    public Transfer deposit(String idempotencyKey, String accountNumber, long amount) {
+        LockedAccounts accounts = lockInOrder(SYSTEM_ACCOUNT_NUMBER, accountNumber);
+
+        String requestHash = hash("DEPOSIT|" + accountNumber + "|" + amount);
+        return move(idempotencyKey, requestHash, TransferType.DEPOSIT,
+                accounts.from(), accounts.to(), amount);
+    }
+
+    /**
+     * [1주차] 락 없는 이체 (API에서는 더 이상 사용하지 않음, 1주차 테스트 기록용으로 남김)
      * 주의: 2주차에 Account의 @Version을 다시 켠 뒤로는, 저장 시 버전 검사가 자동으로 일어나서
-     *       실제로는 낙관적 락과 같은 방식으로 동작함. 최종 방식은 2주차 비교 후 결정
+     *       실제로는 낙관적 락과 같은 방식으로 동작함
      */
     @Transactional
     public Transfer transfer(String idempotencyKey, String fromAccountNumber,
@@ -63,33 +70,26 @@ public class TransferService {
     }
 
     /**
-     * [2주차] 비관적 락 이체
+     * [2주차] 비관적 락 이체 (API가 사용하는 최종 방식)
      * 계좌를 읽을 때부터 SELECT ... FOR UPDATE로 잠금.
      * 다른 트랜잭션은 이 트랜잭션이 끝날 때까지 같은 계좌를 잠그지 못하고 기다림
+     * 선택 이유: 세 방식 모두 정합성은 같았고, 원자적 UPDATE와 처리 시간 차이가 없었으며,
+     *           규칙(debit/credit)을 Account 엔티티에 모아 둘 수 있음 (docs/week2-summary.md 참고)
      */
     @Transactional
     public Transfer transferWithPessimisticLock(String idempotencyKey, String fromAccountNumber,
                                                 String toAccountNumber, long amount) {
         validateDifferentAccounts(fromAccountNumber, toAccountNumber);
 
-        // 데드락 방지: 두 계좌 중 계좌번호가 "작은 쪽부터" 항상 같은 순서로 잠금
-        boolean fromFirst = fromAccountNumber.compareTo(toAccountNumber) < 0;
-        String firstNumber = fromFirst ? fromAccountNumber : toAccountNumber;
-        String secondNumber = fromFirst ? toAccountNumber : fromAccountNumber;
-
-        Account first = findAccountForUpdate(firstNumber);
-        Account second = findAccountForUpdate(secondNumber);
-
-        // 잠근 순서와 상관없이, 원래 의미대로 보내는 쪽(from)과 받는 쪽(to)을 다시 맞춤
-        Account from = fromFirst ? first : second;
-        Account to = fromFirst ? second : first;
+        LockedAccounts accounts = lockInOrder(fromAccountNumber, toAccountNumber);
 
         String requestHash = hash("TRANSFER|" + fromAccountNumber + "|" + toAccountNumber + "|" + amount);
-        return move(idempotencyKey, requestHash, TransferType.TRANSFER, from, to, amount);
+        return move(idempotencyKey, requestHash, TransferType.TRANSFER,
+                accounts.from(), accounts.to(), amount);
     }
 
     /**
-     * [2주차] 낙관적 락 이체 (재시도 없음)
+     * [2주차] 낙관적 락 이체 (재시도 없음, 비교 실험용)
      * 잠그지 않고 읽은 뒤, 저장(UPDATE)할 때 버전 번호를 비교.
      * 그사이 다른 트랜잭션이 먼저 수정했으면 OptimisticLockingFailureException 발생 → 전부 롤백
      * 재시도는 이 메서드를 호출하는 OptimisticLockTransferFacade가 담당
@@ -107,7 +107,7 @@ public class TransferService {
     }
 
     /**
-     * [2주차] 원자적 UPDATE 이체
+     * [2주차] 원자적 UPDATE 이체 (비교 실험용)
      * Java에서 잔액을 계산하지 않고, DB에게 "지금 잔액에서 빼라/더해라"라고 시킴
      * → 읽기와 쓰기 사이의 틈이 없어서 갱신 손실이 생기지 않음
      * → move()는 Java에서 계산(debit/credit)하는 방식이라 섞어 쓰지 않고, 흐름을 따로 만듦
@@ -156,6 +156,24 @@ public class TransferService {
         // 신청서 완료 처리
         transfer.complete();
         return transfer;
+    }
+
+    /**
+     * 두 계좌를 비관적 락으로 잠그되, 항상 "계좌번호가 작은 쪽부터" 같은 순서로 잠금
+     * → A→B, B→A 요청이 동시에 와도 둘 다 같은 계좌부터 잠그려고 하므로 데드락이 생기지 않음
+     * → 잠근 순서와 상관없이, 돌려줄 때는 원래 의미(보내는 쪽, 받는 쪽)대로 맞춰서 돌려줌
+     */
+    private LockedAccounts lockInOrder(String fromAccountNumber, String toAccountNumber) {
+        boolean fromFirst = fromAccountNumber.compareTo(toAccountNumber) < 0;
+        String firstNumber = fromFirst ? fromAccountNumber : toAccountNumber;
+        String secondNumber = fromFirst ? toAccountNumber : fromAccountNumber;
+
+        Account first = findAccountForUpdate(firstNumber);
+        Account second = findAccountForUpdate(secondNumber);
+
+        return fromFirst
+                ? new LockedAccounts(first, second)
+                : new LockedAccounts(second, first);
     }
 
     /**
@@ -237,12 +255,6 @@ public class TransferService {
         return accountRepository.findByAccountNumberForUpdate(accountNumber)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "계좌를 찾을 수 없습니다: " + accountNumber));
-    }
-
-    // 시스템 계좌 조회. 없으면 설정 오류이므로 500
-    private Account findSystemAccount() {
-        return accountRepository.findByAccountNumber(SYSTEM_ACCOUNT_NUMBER)
-                .orElseThrow(() -> new IllegalStateException("은행 금고 계좌가 없습니다"));
     }
 
     // 요청 내용을 64글자 SHA-256 해시로 변환 (3주차 멱등성 검사에서 사용)
