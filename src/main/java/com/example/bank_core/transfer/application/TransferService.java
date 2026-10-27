@@ -2,6 +2,7 @@ package com.example.bank_core.transfer.application;
 
 import com.example.bank_core.account.domain.Account;
 import com.example.bank_core.account.domain.AccountRepository;
+import com.example.bank_core.account.domain.AccountStatus;
 import com.example.bank_core.ledger.domain.EntryType;
 import com.example.bank_core.ledger.domain.LedgerEntry;
 import com.example.bank_core.ledger.domain.LedgerEntryRepository;
@@ -98,7 +99,6 @@ public class TransferService {
                                                String toAccountNumber, long amount) {
         validateDifferentAccounts(fromAccountNumber, toAccountNumber);
 
-        // 일반 조회 (락 없음). 대신 각 계좌의 version 값도 같이 읽어 둠
         Account from = findAccount(fromAccountNumber);
         Account to = findAccount(toAccountNumber);
 
@@ -107,7 +107,59 @@ public class TransferService {
     }
 
     /**
-     * 입금, 이체가 같이 쓰는 "돈 옮기기" 6단계
+     * [2주차] 원자적 UPDATE 이체
+     * Java에서 잔액을 계산하지 않고, DB에게 "지금 잔액에서 빼라/더해라"라고 시킴
+     * → 읽기와 쓰기 사이의 틈이 없어서 갱신 손실이 생기지 않음
+     * → move()는 Java에서 계산(debit/credit)하는 방식이라 섞어 쓰지 않고, 흐름을 따로 만듦
+     * → 고객 계좌 간 이체 전용 (잔액이 마이너스가 될 수 있는 시스템 계좌에는 사용하지 않음)
+     */
+    @Transactional
+    public Transfer transferWithAtomicUpdate(String idempotencyKey, String fromAccountNumber,
+                                             String toAccountNumber, long amount) {
+        validateDifferentAccounts(fromAccountNumber, toAccountNumber);
+        validateAmount(amount);   // Account.debit()이 하던 "금액 > 0" 검사를 여기서 직접
+
+        // 계좌 id와 상태를 알기 위해 조회 (잔액은 여기서 읽은 값을 쓰지 않음)
+        Account from = findAccount(fromAccountNumber);
+        Account to = findAccount(toAccountNumber);
+        validateActive(from);     // Account.debit()이 하던 "사용 중인 계좌" 검사를 여기서 직접
+        validateActive(to);
+
+        Long fromId = from.getId();
+        Long toId = to.getId();
+
+        // 데드락 방지: id가 작은 계좌부터 UPDATE (UPDATE 순간 그 행에 배타 락이 걸리므로 순서를 맞춤)
+        if (fromId < toId) {
+            decreaseOrThrow(fromId, amount);
+            accountRepository.increaseBalance(toId, amount);
+        } else {
+            accountRepository.increaseBalance(toId, amount);
+            decreaseOrThrow(fromId, amount);   // 여기서 잔액 부족이면 위의 입금까지 전부 롤백
+        }
+
+        // 거래 후 잔액: UPDATE 직후 같은 트랜잭션에서 다시 조회
+        // (이 행들은 지금 내가 잠그고 있으므로, 읽은 값은 방금 내가 바꾼 값)
+        long fromBalanceAfter = currentBalance(fromId);
+        long toBalanceAfter = currentBalance(toId);
+
+        // 송금 신청서 작성
+        String requestHash = hash("TRANSFER|" + fromAccountNumber + "|" + toAccountNumber + "|" + amount);
+        Transfer transfer = transferRepository.save(Transfer.request(
+                idempotencyKey, requestHash, TransferType.TRANSFER, fromId, toId, amount));
+
+        // 원장 두 줄 기록
+        ledgerEntryRepository.save(LedgerEntry.record(
+                transfer.getId(), fromId, EntryType.DEBIT, amount, fromBalanceAfter));
+        ledgerEntryRepository.save(LedgerEntry.record(
+                transfer.getId(), toId, EntryType.CREDIT, amount, toBalanceAfter));
+
+        // 신청서 완료 처리
+        transfer.complete();
+        return transfer;
+    }
+
+    /**
+     * 입금, 이체가 같이 쓰는 "돈 옮기기" 6단계 (Java에서 잔액을 계산하는 방식)
      */
     private Transfer move(String idempotencyKey, String requestHash, TransferType type,
                           Account from, Account to, long amount) {
@@ -137,6 +189,33 @@ public class TransferService {
         // 6. 신청서 완료 처리
         transfer.complete();
         return transfer;
+    }
+
+    // 원자적 출금 실행. 수정된 행이 0이면 잔액 부족으로 판단해 예외 → 트랜잭션 전체 롤백
+    private void decreaseOrThrow(Long accountId, long amount) {
+        int updated = accountRepository.decreaseBalance(accountId, amount);
+        if (updated == 0) {
+            throw new IllegalStateException("잔액이 부족합니다");
+        }
+    }
+
+    // UPDATE 후 최신 잔액 조회
+    private long currentBalance(Long accountId) {
+        return accountRepository.findById(accountId).orElseThrow().getBalance();
+    }
+
+    // 금액은 0보다 커야 함
+    private void validateAmount(long amount) {
+        if (amount <= 0) {
+            throw new IllegalArgumentException("금액은 0보다 커야 합니다");
+        }
+    }
+
+    // 사용 중인 계좌만 거래 가능
+    private void validateActive(Account account) {
+        if (account.getStatus() != AccountStatus.ACTIVE) {
+            throw new IllegalStateException("사용할 수 없는 계좌입니다: " + account.getAccountNumber());
+        }
     }
 
     // 같은 계좌끼리 이체 금지
