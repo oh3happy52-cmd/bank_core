@@ -1,5 +1,14 @@
 package com.example.bank_core.account.domain;
 
+/**
+ * [무엇] 계좌 한 개를 나타내는 엔티티 (DB의 account 테이블과 연결)
+ * [역할] 잔액을 들고 있고, 입금(credit)·출금(debit) 규칙을 직접 검사
+ *        규칙을 어기면 BusinessException을 던져서 GlobalExceptionHandler가 알맞은 오류로 응답하게 함
+ * [누가 쓰나] TransferService(입금·이체), AccountService(조회)
+ */
+
+import com.example.bank_core.common.exception.BusinessException;
+import com.example.bank_core.common.exception.ErrorCode;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -9,7 +18,6 @@ import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 
-// @Entity: 이 클래스가 DB의 account 테이블과 연결된 엔티티라는 뜻
 @Entity
 @Table(name = "account")
 @Getter
@@ -39,10 +47,7 @@ public class Account {
     @Column(name = "balance", nullable = false)
     private long balance;   // 원 단위. 돈은 오차가 생기는 double을 쓰지 않음
 
-    // [2주차] 낙관적 락용 버전 번호
-    // → UPDATE할 때 "WHERE id = ? AND version = (내가 읽은 번호)" 조건이 자동으로 붙음
-    // → 그사이 다른 트랜잭션이 먼저 수정했으면 번호가 달라서 0건 수정 → 낙관적 락 예외 발생
-    // → 1주차에는 락 없는 상태를 재현하려고 꺼 두었음
+    // 낙관적 락용 버전 번호 (UPDATE 시 "WHERE version = 내가 읽은 번호" 조건이 자동으로 붙음)
     @Version
     @Column(name = "version", nullable = false)
     private Long version;
@@ -77,20 +82,22 @@ public class Account {
         validateActive();
         // 고객 계좌는 잔액보다 많이 출금할 수 없음. 시스템 계좌(은행 금고)는 예외
         if (this.accountType == AccountType.CUSTOMER && this.balance < amount) {
-            throw new IllegalStateException("잔액이 부족합니다");
+            throw new BusinessException(ErrorCode.INSUFFICIENT_BALANCE);
         }
         this.balance -= amount;
     }
 
+    // 금액은 0보다 커야 함
     private void validateAmount(long amount) {
         if (amount <= 0) {
-            throw new IllegalArgumentException("금액은 0보다 커야 합니다");
+            throw new BusinessException(ErrorCode.INVALID_AMOUNT);
         }
     }
 
+    // 사용 중인 계좌만 거래 가능
     private void validateActive() {
         if (this.status != AccountStatus.ACTIVE) {
-            throw new IllegalStateException("사용할 수 없는 계좌입니다");
+            throw new BusinessException(ErrorCode.ACCOUNT_NOT_ACTIVE, this.accountNumber);
         }
     }
 
