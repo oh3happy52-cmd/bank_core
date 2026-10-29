@@ -1,6 +1,11 @@
 package com.example.bank_core.common.exception;
 
+// [무엇] 전역 예외 처리기
+// [역할] 모든 Controller에서 터진 예외를 한곳에서 받아 같은 모양({code, message})의 응답으로 바꿈
+// [누가 쓰나] Spring이 자동으로 사용 (@RestControllerAdvice). 직접 부르는 곳은 없음
+
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.ResponseEntity;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -8,12 +13,14 @@ import org.springframework.web.bind.MissingRequestHeaderException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-// 오류를 받아서 안내문으로 바꾸는 곳
 // @RestControllerAdvice: 모든 창구(Controller)에서 터진 예외를 여기서 한꺼번에 받아 처리
 // → 창구마다 try-catch를 쓰지 않아도 됨
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    // DB UNIQUE 제약 이름. 같은 Idempotency-Key가 두 번 저장되려 할 때 이 이름이 에러 메시지에 들어 있음
+    private static final String IDEMPOTENCY_KEY_CONSTRAINT = "uk_transfer_idempotency_key";
 
     // 업무 규칙 위반 (잔액 부족, 없는 계좌 등)
     @ExceptionHandler(BusinessException.class)
@@ -22,6 +29,24 @@ public class GlobalExceptionHandler {
         log.info("업무 오류: code={}, message={}", code.name(), e.getMessage());
         return ResponseEntity.status(code.getStatus())
                 .body(ErrorResponse.of(code, e.getMessage()));
+    }
+
+    // DB 제약 조건 위반
+    // - 같은 Idempotency-Key 요청이 동시에 들어와, 늦게 온 쪽이 저장할 때 UNIQUE 규칙에 걸린 경우 → 409
+    // - 그 밖의 제약 위반은 우리 코드의 버그일 가능성이 높으므로 → 500 + 에러 로그
+    @ExceptionHandler(DataIntegrityViolationException.class)
+    public ResponseEntity<ErrorResponse> handleDataIntegrity(DataIntegrityViolationException e) {
+        String cause = e.getMostSpecificCause().getMessage();
+        if (cause != null && cause.contains(IDEMPOTENCY_KEY_CONSTRAINT)) {
+            ErrorCode code = ErrorCode.DUPLICATE_REQUEST;
+            log.info("동시 중복 요청 차단: {}", cause);
+            return ResponseEntity.status(code.getStatus())
+                    .body(ErrorResponse.of(code, code.getMessage()));
+        }
+        log.error("DB 제약 조건 위반", e);
+        ErrorCode code = ErrorCode.INTERNAL_ERROR;
+        return ResponseEntity.status(code.getStatus())
+                .body(ErrorResponse.of(code, code.getMessage()));
     }
 
     // 요청 값 검사(@Valid) 실패: 예) amount가 0이거나 비어 있음

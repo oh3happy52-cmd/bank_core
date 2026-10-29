@@ -1,5 +1,9 @@
 package com.example.bank_core.transfer.application;
 
+// [무엇] 입금·이체 업무 로직
+// [역할] 멱등성 검사 → 계좌 잠금 → 돈 옮기기 → 이체 기록·원장 저장을 한 트랜잭션으로 처리
+// [누가 쓰나] TransferController(API), 동시성 테스트들
+
 import com.example.bank_core.account.domain.Account;
 import com.example.bank_core.account.domain.AccountRepository;
 import com.example.bank_core.account.domain.AccountStatus;
@@ -19,6 +23,7 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.HexFormat;
+import java.util.Optional;
 
 // @Service: 이 클래스가 업무 로직(서비스)이라고 Spring에 알려 줌
 // @RequiredArgsConstructor: final 필드(리포지토리들)를 Spring이 자동으로 연결해 줌
@@ -45,9 +50,15 @@ public class TransferService {
      */
     @Transactional   // 아래 작업을 하나의 트랜잭션으로 처리. 중간에 실패하면 전부 롤백
     public Transfer deposit(String idempotencyKey, String accountNumber, long amount) {
-        LockedAccounts accounts = lockInOrder(SYSTEM_ACCOUNT_NUMBER, accountNumber);
-
+        // 0. 멱등성 검사: 같은 키로 이미 처리했으면 돈을 옮기지 않고 그때 결과를 그대로 돌려줌
         String requestHash = hash("DEPOSIT|" + accountNumber + "|" + amount);
+        Optional<Transfer> alreadyDone = findAlreadyProcessed(idempotencyKey, requestHash);
+        if (alreadyDone.isPresent()) {
+            return alreadyDone.get();
+        }
+
+        // 1. 처음 보는 키일 때만 계좌를 잠그고 돈을 옮김
+        LockedAccounts accounts = lockInOrder(SYSTEM_ACCOUNT_NUMBER, accountNumber);
         return move(idempotencyKey, requestHash, TransferType.DEPOSIT,
                 accounts.from(), accounts.to(), amount);
     }
@@ -76,9 +87,15 @@ public class TransferService {
                                                 String toAccountNumber, long amount) {
         validateDifferentAccounts(fromAccountNumber, toAccountNumber);
 
-        LockedAccounts accounts = lockInOrder(fromAccountNumber, toAccountNumber);
-
+        // 0. 멱등성 검사: 같은 키로 이미 처리했으면 돈을 옮기지 않고 그때 결과를 그대로 돌려줌
         String requestHash = hash("TRANSFER|" + fromAccountNumber + "|" + toAccountNumber + "|" + amount);
+        Optional<Transfer> alreadyDone = findAlreadyProcessed(idempotencyKey, requestHash);
+        if (alreadyDone.isPresent()) {
+            return alreadyDone.get();
+        }
+
+        // 1. 처음 보는 키일 때만 계좌를 잠그고 돈을 옮김
+        LockedAccounts accounts = lockInOrder(fromAccountNumber, toAccountNumber);
         return move(idempotencyKey, requestHash, TransferType.TRANSFER,
                 accounts.from(), accounts.to(), amount);
     }
@@ -140,6 +157,20 @@ public class TransferService {
 
         transfer.complete();
         return transfer;
+    }
+
+    /**
+     * 멱등성 검사
+     * - 이 키로 처리한 이체가 없음 → 빈 값 (처음 온 요청, 정상 처리하면 됨)
+     * - 있음 + 요청 내용(hash)이 같음 → 그 이체를 돌려줌 (재전송이므로 처음 결과를 다시 알려 줌)
+     * - 있음 + 요청 내용이 다름 → 422 IDEMPOTENCY_KEY_REUSED (같은 키를 다른 요청에 잘못 사용)
+     */
+    private Optional<Transfer> findAlreadyProcessed(String idempotencyKey, String requestHash) {
+        Optional<Transfer> existing = transferRepository.findByIdempotencyKey(idempotencyKey);
+        if (existing.isPresent() && !existing.get().getRequestHash().equals(requestHash)) {
+            throw new BusinessException(ErrorCode.IDEMPOTENCY_KEY_REUSED);
+        }
+        return existing;
     }
 
     /**
