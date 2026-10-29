@@ -17,6 +17,7 @@ public enum ErrorCode {
     INVALID_AMOUNT(HttpStatus.BAD_REQUEST, "금액은 0보다 커야 합니다"),
     SAME_ACCOUNT(HttpStatus.BAD_REQUEST, "같은 계좌로는 이체할 수 없습니다"),
     MISSING_IDEMPOTENCY_KEY(HttpStatus.BAD_REQUEST, "Idempotency-Key 헤더가 필요합니다"),
+    SETTLEMENT_DATE_NOT_CLOSED(HttpStatus.BAD_REQUEST, "아직 끝나지 않은 날짜는 정산할 수 없습니다"),
 
     // 404: 찾는 대상이 없음
     ACCOUNT_NOT_FOUND(HttpStatus.NOT_FOUND, "계좌를 찾을 수 없습니다"),
