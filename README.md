@@ -1,5 +1,9 @@
 # bank_core — 계좌·이체 코어 시스템
 
+
+[![CI](https://github.com/oh3happy52-cmd/bank_core/actions/workflows/ci.yml/badge.svg)](https://github.com/oh3happy52-cmd/bank_core/actions/workflows/ci.yml)
+
+
 동시에 이체 요청이 몰려도 **잔액이 틀리지 않는** 은행 계좌·이체 서버입니다.
 문제를 먼저 **재현**하고, 해결 방법을 **숫자로 비교**해서 선택했습니다.
 

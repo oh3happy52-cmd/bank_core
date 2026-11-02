@@ -1,0 +1,33 @@
+# [무엇] CI(지속적 통합) 설정 - GitHub Actions
+# [역할] main 브랜치에 push하거나 Pull Request를 만들 때마다, GitHub의 리눅스 컴퓨터에서 ./gradlew test를 자동 실행
+# [누가 쓰나] GitHub가 이 파일을 읽고 실행. 결과는 저장소의 Actions 탭과 README 배지에 표시됨
+
+name: CI
+
+# 언제 실행할지
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest        # GitHub가 빌려주는 리눅스 컴퓨터 (Docker가 이미 설치돼 있어서 Testcontainers 사용 가능)
+
+    steps:
+      # 1. 저장소 코드 내려받기
+      - uses: actions/checkout@v5
+
+      # 2. Java 21 설치 (내 Mac과 같은 Temurin)
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # 3. Gradle 준비 (내려받은 라이브러리를 저장해 두어 다음 실행이 빨라짐)
+      - uses: gradle/actions/setup-gradle@v5
+
+      # 4. 테스트 실행 (하나라도 실패하면 이 단계가 실패 → ❌ 표시)
+      - name: 테스트
+        run: ./gradlew test
