@@ -2,7 +2,7 @@ package com.example.bank_core.account.domain;
 
 /**
  * [무엇] 계좌 한 개를 나타내는 엔티티 (DB의 account 테이블과 연결)
- * [역할] 잔액을 들고 있고, 입금(credit)·출금(debit) 규칙을 직접 검사
+ * [역할] 잔액과 주인(회원 번호)을 들고 있고, 입금(credit)·출금(debit) 규칙을 직접 검사
  *        규칙을 어기면 BusinessException을 던져서 GlobalExceptionHandler가 알맞은 오류로 응답하게 함
  * [누가 쓰나] TransferService(입금·이체), AccountService(조회)
  */
@@ -27,6 +27,10 @@ public class Account {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
+
+    // 이 계좌 주인의 회원 번호 (member.id). 시스템 계좌(SYS-CASH)는 주인이 없어서 null
+    @Column(name = "member_id")
+    private Long memberId;
 
     @Column(name = "account_number", nullable = false, unique = true, length = 20)
     private String accountNumber;
@@ -67,6 +71,11 @@ public class Account {
         account.status = AccountStatus.ACTIVE;
         account.balance = 0L;
         return account;
+    }
+
+    // 이 계좌가 해당 회원의 것인가? (권한 검사에서 사용)
+    public boolean isOwnedBy(Long memberId) {
+        return this.memberId != null && this.memberId.equals(memberId);
     }
 
     // 입금 (잔액 증가)

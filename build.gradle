@@ -25,6 +25,9 @@ dependencies {
 	implementation 'org.flywaydb:flyway-mysql'
 	// Swagger: 코드를 읽어서 API 문서 웹 페이지를 자동으로 만들어 줌 (Spring Boot 4는 springdoc 3.x)
 	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0'
+	// 인증·권한: Spring Security(문지기) + JWT 검사 기능
+	implementation 'org.springframework.boot:spring-boot-starter-security'
+	implementation 'org.springframework.boot:spring-boot-starter-security-oauth2-resource-server'
 	compileOnly 'org.projectlombok:lombok'
 	runtimeOnly 'com.mysql:mysql-connector-j'
 	annotationProcessor 'org.projectlombok:lombok'
@@ -32,6 +35,8 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-flyway-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	// 인증·권한 테스트: 테스트에서 "특정 회원으로 로그인한 상태"를 흉내 냄
+	testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
 	testImplementation 'org.springframework.boot:spring-boot-testcontainers'
 	testImplementation 'org.testcontainers:testcontainers-junit-jupiter'
 	testImplementation 'org.testcontainers:testcontainers-mysql'
