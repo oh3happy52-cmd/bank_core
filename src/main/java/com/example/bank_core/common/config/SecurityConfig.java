@@ -4,9 +4,12 @@ package com.example.bank_core.common.config;
 // [역할] ① 어떤 주소를 누가 쓸 수 있는지 정함
 //        ② JWT를 만들고(encoder) 검사하는(decoder) 도구를 준비
 //        ③ 비밀번호 비교 도구(BCrypt)를 준비
+//        ④ 문지기가 막을 때(401, 403)도 {code, message} 모양으로 응답
 // [누가 쓰나] Spring Security가 모든 요청마다 자동으로 사용. 토큰 발급은 AuthService가 JwtEncoder를 씀
 
+import com.example.bank_core.common.exception.ErrorCode;
 import com.nimbusds.jose.jwk.source.ImmutableSecret;
+import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -26,6 +29,7 @@ import org.springframework.security.web.SecurityFilterChain;
 
 import javax.crypto.SecretKey;
 import javax.crypto.spec.SecretKeySpec;
+import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
 @Configuration
@@ -54,10 +58,24 @@ public class SecurityConfig {
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
+                // 문지기가 막을 때의 응답 모양
+                .exceptionHandling(exception -> exception
+                        .authenticationEntryPoint((request, response, e) -> writeError(response, ErrorCode.UNAUTHORIZED))   // 401: 토큰 없음
+                        .accessDeniedHandler((request, response, e) -> writeError(response, ErrorCode.FORBIDDEN)))         // 403: 역할 부족
                 // 요청 헤더의 "Authorization: Bearer 토큰"을 JWT로 검사
                 .oauth2ResourceServer(oauth2 -> oauth2
+                        .authenticationEntryPoint((request, response, e) -> writeError(response, ErrorCode.UNAUTHORIZED))  // 401: 가짜·만료 토큰
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())));
         return http.build();
+    }
+
+    // 문지기가 막을 때 {code, message} 모양의 JSON을 직접 써서 응답
+    // (Controller에 도착하기 전이라 GlobalExceptionHandler가 처리하지 못하므로 여기서 만듦)
+    private static void writeError(HttpServletResponse response, ErrorCode code) throws IOException {
+        response.setStatus(code.getStatus().value());
+        response.setContentType("application/json;charset=UTF-8");
+        response.getWriter().write(
+                "{\"code\":\"" + code.name() + "\",\"message\":\"" + code.getMessage() + "\"}");
     }
 
     // 토큰 서명·검사에 쓰는 비밀 키 (서버만 앎)

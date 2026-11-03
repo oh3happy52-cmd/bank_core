@@ -1,5 +1,9 @@
 package com.example.bank_core.account.domain;
 
+// [무엇] 계좌(account 테이블)를 DB에서 읽고 쓰는 창구
+// [역할] 계좌 조회, 비관적 락 조회, 원자적 UPDATE, 계좌 주인 확인
+// [누가 쓰나] AccountService, TransferService
+
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
@@ -35,4 +39,9 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
     @Query("update Account a set a.balance = a.balance + :amount, a.version = a.version + 1 " +
            "where a.id = :id")
     int increaseBalance(@Param("id") Long id, @Param("amount") long amount);
+
+    // [인증] 이 계좌번호의 주인이 이 회원인가? (참/거짓만 확인)
+    // → 실제 SQL: SELECT ... FROM account WHERE account_number = ? AND member_id = ? (있으면 true)
+    // → 계좌 객체를 불러오지 않고 "있다/없다"만 보므로, 뒤에서 비관적 락으로 계좌를 읽을 때 옛날 값이 섞이지 않음
+    boolean existsByAccountNumberAndMemberId(String accountNumber, Long memberId);
 }

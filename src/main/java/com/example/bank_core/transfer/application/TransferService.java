@@ -1,7 +1,7 @@
 package com.example.bank_core.transfer.application;
 
 // [무엇] 입금·이체 업무 로직
-// [역할] 멱등성 검사 → 계좌 잠금 → 돈 옮기기 → 이체 기록·원장 저장을 한 트랜잭션으로 처리
+// [역할] 주인 확인 → 멱등성 검사 → 계좌 잠금 → 돈 옮기기 → 이체 기록·원장 저장을 한 트랜잭션으로 처리
 // [누가 쓰나] TransferController(API), 동시성 테스트들
 
 import com.example.bank_core.account.domain.Account;
@@ -9,6 +9,7 @@ import com.example.bank_core.account.domain.AccountRepository;
 import com.example.bank_core.account.domain.AccountStatus;
 import com.example.bank_core.common.exception.BusinessException;
 import com.example.bank_core.common.exception.ErrorCode;
+import com.example.bank_core.common.security.LoginMember;
 import com.example.bank_core.ledger.domain.EntryType;
 import com.example.bank_core.ledger.domain.LedgerEntry;
 import com.example.bank_core.ledger.domain.LedgerEntryRepository;
@@ -40,6 +41,30 @@ public class TransferService {
 
     // 순서대로 잠근 두 계좌를 원래 의미(보내는 쪽, 받는 쪽)대로 담는 상자
     private record LockedAccounts(Account from, Account to) {
+    }
+
+    /**
+     * [인증] API용 입금: 계좌 주인 또는 관리자만 가능 → 확인 후 deposit 실행
+     * 같은 클래스 안의 메서드를 부르면 안쪽 @Transactional은 따로 적용되지 않지만,
+     * 이 메서드의 @Transactional 하나로 전체가 한 트랜잭션으로 묶임
+     */
+    @Transactional
+    public Transfer depositByMember(LoginMember loginMember, String idempotencyKey,
+                                    String accountNumber, long amount) {
+        if (!loginMember.isAdmin()) {
+            validateOwner(accountNumber, loginMember.id());
+        }
+        return deposit(idempotencyKey, accountNumber, amount);
+    }
+
+    /**
+     * [인증] API용 이체: 보내는 계좌의 주인만 가능 (관리자도 남의 돈을 옮길 수 없음) → 확인 후 비관적 락 이체 실행
+     */
+    @Transactional
+    public Transfer transferByMember(LoginMember loginMember, String idempotencyKey,
+                                     String fromAccountNumber, String toAccountNumber, long amount) {
+        validateOwner(fromAccountNumber, loginMember.id());
+        return transferWithPessimisticLock(idempotencyKey, fromAccountNumber, toAccountNumber, amount);
     }
 
     /**
@@ -157,6 +182,18 @@ public class TransferService {
 
         transfer.complete();
         return transfer;
+    }
+
+    /**
+     * [인증] 계좌 주인 확인. 주인이 아니면 403
+     * - 계좌 객체를 불러오지 않고 "있다/없다"만 확인 (exists 쿼리)
+     *   → 뒤에서 비관적 락으로 계좌를 읽을 때, 미리 불러 둔 옛날 잔액이 섞이지 않게 하기 위함
+     * - 없는 계좌번호여도 403: 남의 계좌가 존재하는지조차 알려 주지 않음
+     */
+    private void validateOwner(String accountNumber, Long memberId) {
+        if (!accountRepository.existsByAccountNumberAndMemberId(accountNumber, memberId)) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
     }
 
     /**
