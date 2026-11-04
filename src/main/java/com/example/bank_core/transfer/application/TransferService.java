@@ -2,7 +2,8 @@ package com.example.bank_core.transfer.application;
 
 // [무엇] 입금·이체 업무 로직
 // [역할] 주인 확인 → 멱등성 검사 → 계좌 잠금 → 돈 옮기기 → 이체 기록·원장 저장을 한 트랜잭션으로 처리
-// [누가 쓰나] TransferController(API), 동시성 테스트들
+//        타행 이체용: 고객 → 보관 계좌(SYS-INTERBANK) 옮기기, 보관 계좌 → 고객 환불
+// [누가 쓰나] TransferController(API), InterbankTransferService(타행), 동시성 테스트들
 
 import com.example.bank_core.account.domain.Account;
 import com.example.bank_core.account.domain.AccountRepository;
@@ -35,6 +36,9 @@ public class TransferService {
     // 시스템 계좌(은행 금고)의 계좌번호. 입금할 때 돈이 나오는 쪽으로 사용
     private static final String SYSTEM_ACCOUNT_NUMBER = "SYS-CASH";
 
+    // 타행 이체 보관 계좌. 다른 은행에 보낼 돈을 잠시 맡아 두는 시스템 계좌
+    private static final String INTERBANK_ACCOUNT_NUMBER = "SYS-INTERBANK";
+
     private final AccountRepository accountRepository;
     private final TransferRepository transferRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
@@ -65,6 +69,47 @@ public class TransferService {
                                      String fromAccountNumber, String toAccountNumber, long amount) {
         validateOwner(fromAccountNumber, loginMember.id());
         return transferWithPessimisticLock(idempotencyKey, fromAccountNumber, toAccountNumber, amount);
+    }
+
+    /**
+     * [타행] 고객 계좌 → 보관 계좌(SYS-INTERBANK)로 돈 옮기기
+     * - 다른 은행에 요청하기 "전에" 우리 장부에서 먼저 빼 둠 (돈이 보관 계좌에 기록되므로 원장 합계는 그대로 0)
+     * - receiverSummary: 받는 은행·계좌 (같은 키에 다른 받는 사람이면 IDEMPOTENCY_KEY_REUSED가 나도록 해시에 포함)
+     * - 주인 확인은 부르는 쪽(InterbankTransferService)이 먼저 함
+     */
+    @Transactional
+    public Transfer sendToInterbank(String idempotencyKey, String fromAccountNumber,
+                                    String receiverSummary, long amount) {
+        String requestHash = hash("INTERBANK|" + fromAccountNumber + "|" + receiverSummary + "|" + amount);
+        Optional<Transfer> alreadyDone = findAlreadyProcessed(idempotencyKey, requestHash);
+        if (alreadyDone.isPresent()) {
+            return alreadyDone.get();
+        }
+
+        LockedAccounts accounts = lockInOrder(fromAccountNumber, INTERBANK_ACCOUNT_NUMBER);
+        return move(idempotencyKey, requestHash, TransferType.INTERBANK,
+                accounts.from(), accounts.to(), amount);
+    }
+
+    /**
+     * [타행] 보관 계좌(SYS-INTERBANK) → 고객 계좌로 환불
+     * - 다른 은행이 "확실히 거절"했을 때만 호출됨
+     * - idempotencyKey를 "REFUND-번호표"로 고정해서 부름 → 환불 처리가 두 번 실행돼도 돈은 한 번만 돌아감
+     */
+    @Transactional
+    public Transfer refundFromInterbank(String idempotencyKey, Long customerAccountId, long amount) {
+        String customerAccountNumber = accountRepository.findAccountNumberById(customerAccountId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.ACCOUNT_NOT_FOUND, String.valueOf(customerAccountId)));
+
+        String requestHash = hash("REFUND|" + customerAccountNumber + "|" + amount);
+        Optional<Transfer> alreadyDone = findAlreadyProcessed(idempotencyKey, requestHash);
+        if (alreadyDone.isPresent()) {
+            return alreadyDone.get();
+        }
+
+        LockedAccounts accounts = lockInOrder(INTERBANK_ACCOUNT_NUMBER, customerAccountNumber);
+        return move(idempotencyKey, requestHash, TransferType.REFUND,
+                accounts.from(), accounts.to(), amount);
     }
 
     /**

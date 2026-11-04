@@ -43,6 +43,7 @@ public class SecurityConfig {
     /**
      * 문지기 규칙표
      * - 로그인, Swagger 문서: 누구나
+     * - /mock-bank/**: 누구나 (실험용 "다른 은행". 실제로는 은행 간 전용망·인증서로 보호)
      * - /api/v1/admin/**: ADMIN 역할만 (아니면 403)
      * - 그 밖의 모든 API: 토큰이 있어야 함 (없으면 401)
      */
@@ -56,6 +57,7 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/login").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
+                        .requestMatchers("/mock-bank/**").permitAll()
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 // 문지기가 막을 때의 응답 모양
