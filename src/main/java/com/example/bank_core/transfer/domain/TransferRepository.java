@@ -1,7 +1,8 @@
 package com.example.bank_core.transfer.domain;
 
 // [무엇] 이체 기록(transfer 테이블)을 DB에서 읽고 쓰는 창구
-// [역할] 저장, 조회 + Idempotency-Key로 기존 이체 찾기 + 기간별 거래 합계(정산용)
+// [역할] 저장, 조회 + 기간별 거래 합계(정산용)
+//        (멱등성 검사는 V7부터 번호표 메모장 IdempotencyKeyRepository가 담당)
 // [누가 쓰나] TransferService, SettlementService
 
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -10,13 +11,8 @@ import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Optional;
 
 public interface TransferRepository extends JpaRepository<Transfer, Long> {
-
-    // 같은 Idempotency-Key로 이미 처리한 이체가 있는지 찾기 (멱등성 검사용)
-    // 메서드 이름만 보고 Spring이 "where idempotency_key = ?" 쿼리를 자동으로 만들어 줌
-    Optional<Transfer> findByIdempotencyKey(String idempotencyKey);
 
     // 정산 SQL 결과 한 줄을 담는 틀 (거래 종류 하나당 한 줄). SQL의 AS 이름과 getter 이름이 같아야 함
     interface TypeSummaryRow {

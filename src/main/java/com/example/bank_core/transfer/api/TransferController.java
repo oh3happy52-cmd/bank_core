@@ -42,7 +42,7 @@ public class TransferController {
                     시스템 계좌(SYS-CASH)에서 고객 계좌로 돈을 넣습니다.
 
                     - 본인 계좌만 가능합니다 (관리자는 모든 계좌에 입금 가능).
-                    - 같은 Idempotency-Key + 같은 내용으로 다시 보내면, 돈을 다시 옮기지 않고 처음 결과를 그대로 돌려줍니다.
+                    - 24시간 안에 같은 Idempotency-Key + 같은 내용으로 다시 보내면, 돈을 다시 옮기지 않고 처음 결과를 그대로 돌려줍니다. (24시간이 지난 키는 새 요청으로 처리)
                     """)
     @ApiResponse(responseCode = "201", description = "입금 완료 (재요청이면 처음 결과)")
     @ApiResponse(responseCode = "400", description = "INVALID_REQUEST (금액 0 이하 등) / MISSING_IDEMPOTENCY_KEY")
@@ -75,7 +75,7 @@ public class TransferController {
 
                     - 보내는 계좌의 주인만 가능합니다 (관리자도 불가).
                     - 동시성 제어: 비관적 락 + 계좌번호 순서대로 잠금 (데드락 방지)
-                    - 같은 Idempotency-Key + 같은 내용으로 다시 보내면, 돈을 다시 옮기지 않고 처음 결과를 그대로 돌려줍니다.
+                    - 24시간 안에 같은 Idempotency-Key + 같은 내용으로 다시 보내면, 돈을 다시 옮기지 않고 처음 결과를 그대로 돌려줍니다. (24시간이 지난 키는 새 요청으로 처리)
                     """)
     @ApiResponse(responseCode = "201", description = "이체 완료 (재요청이면 처음 결과)")
     @ApiResponse(responseCode = "400", description = "INVALID_REQUEST / SAME_ACCOUNT / MISSING_IDEMPOTENCY_KEY")

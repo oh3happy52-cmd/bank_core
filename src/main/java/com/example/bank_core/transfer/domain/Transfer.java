@@ -19,7 +19,8 @@ public class Transfer {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "idempotency_key", nullable = false, unique = true, length = 64)
+    // 이 이체를 만든 번호표 (기록용). V7부터 UNIQUE 아님: 24시간이 지나면 같은 번호표로 새 이체가 생길 수 있음
+    @Column(name = "idempotency_key", nullable = false, length = 64)
     private String idempotencyKey;
 
     @Column(name = "request_hash", nullable = false, columnDefinition = "CHAR(64)")

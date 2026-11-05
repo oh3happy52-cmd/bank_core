@@ -1,7 +1,8 @@
 package com.example.bank_core.transfer.application;
 
 // [무엇] 입금·이체 업무 로직
-// [역할] 주인 확인 → 멱등성 검사 → 계좌 잠금 → 돈 옮기기 → 이체 기록·원장 저장을 한 트랜잭션으로 처리
+// [역할] 주인 확인 → 멱등성 검사 → 계좌 잠금 → 돈 옮기기 → 이체 기록·원장·번호표 메모 저장을 한 트랜잭션으로 처리
+//        번호표 메모는 24시간(설정값)만 유효: 지나면 같은 번호표라도 새 요청으로 처리
 //        타행 이체용: 고객 → 보관 계좌(SYS-INTERBANK) 옮기기, 보관 계좌 → 고객 환불
 // [누가 쓰나] TransferController(API), InterbankTransferService(타행), 동시성 테스트들
 
@@ -14,16 +15,21 @@ import com.example.bank_core.common.security.LoginMember;
 import com.example.bank_core.ledger.domain.EntryType;
 import com.example.bank_core.ledger.domain.LedgerEntry;
 import com.example.bank_core.ledger.domain.LedgerEntryRepository;
+import com.example.bank_core.transfer.domain.IdempotencyKey;
+import com.example.bank_core.transfer.domain.IdempotencyKeyRepository;
 import com.example.bank_core.transfer.domain.Transfer;
 import com.example.bank_core.transfer.domain.TransferRepository;
 import com.example.bank_core.transfer.domain.TransferType;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
+import java.time.LocalDateTime;
 import java.util.HexFormat;
 import java.util.Optional;
 
@@ -42,6 +48,12 @@ public class TransferService {
     private final AccountRepository accountRepository;
     private final TransferRepository transferRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
+    private final IdempotencyKeyRepository idempotencyKeyRepository;
+
+    // 번호표 메모 보관 시간(시간 단위). application.properties의 idempotency.ttl-hours, 없으면 24
+    // final이 아닌 필드에 @Value로 넣음 (@RequiredArgsConstructor는 final 필드만 생성자로 받기 때문)
+    @Value("${idempotency.ttl-hours:24}")
+    private long ttlHours;
 
     // 순서대로 잠근 두 계좌를 원래 의미(보내는 쪽, 받는 쪽)대로 담는 상자
     private record LockedAccounts(Account from, Account to) {
@@ -219,6 +231,7 @@ public class TransferService {
         String requestHash = hash("TRANSFER|" + fromAccountNumber + "|" + toAccountNumber + "|" + amount);
         Transfer transfer = transferRepository.save(Transfer.request(
                 idempotencyKey, requestHash, TransferType.TRANSFER, fromId, toId, amount));
+        saveIdempotencyKey(idempotencyKey, requestHash, transfer);
 
         ledgerEntryRepository.save(LedgerEntry.record(
                 transfer.getId(), fromId, EntryType.DEBIT, amount, fromBalanceAfter));
@@ -242,17 +255,44 @@ public class TransferService {
     }
 
     /**
-     * 멱등성 검사
-     * - 이 키로 처리한 이체가 없음 → 빈 값 (처음 온 요청, 정상 처리하면 됨)
-     * - 있음 + 요청 내용(hash)이 같음 → 그 이체를 돌려줌 (재전송이므로 처음 결과를 다시 알려 줌)
-     * - 있음 + 요청 내용이 다름 → 422 IDEMPOTENCY_KEY_REUSED (같은 키를 다른 요청에 잘못 사용)
+     * 멱등성 검사 (번호표 메모장을 봄)
+     * - 메모 없음 → 빈 값 (처음 온 요청, 정상 처리하면 됨)
+     * - 메모 있음 + 유효기간 지남 → 지난 메모를 지우고 빈 값 (24시간 지나서 온 같은 번호표는 새 요청)
+     * - 메모 있음 + 요청 내용(hash)이 다름 → 422 IDEMPOTENCY_KEY_REUSED (같은 번호표를 다른 요청에 잘못 사용)
+     * - 메모 있음 + 같은 내용 → 메모에 적힌 영수증을 돌려줌 (재전송이므로 처음 결과를 다시 알려 줌)
      */
     private Optional<Transfer> findAlreadyProcessed(String idempotencyKey, String requestHash) {
-        Optional<Transfer> existing = transferRepository.findByIdempotencyKey(idempotencyKey);
-        if (existing.isPresent() && !existing.get().getRequestHash().equals(requestHash)) {
+        Optional<IdempotencyKey> memo = idempotencyKeyRepository.findByIdempotencyKey(idempotencyKey);
+        if (memo.isEmpty()) {
+            return Optional.empty();
+        }
+
+        IdempotencyKey found = memo.get();
+        if (found.isExpired(LocalDateTime.now())) {
+            idempotencyKeyRepository.delete(found);
+            // 바로 DB에 DELETE를 보냄 (flush)
+            // JPA는 모아 둔 작업을 보낼 때 INSERT를 DELETE보다 먼저 보내므로,
+            // 이걸 안 하면 옛 메모가 남은 채로 같은 번호표의 새 메모를 넣다가 UNIQUE 규칙에 걸림
+            idempotencyKeyRepository.flush();
+            return Optional.empty();
+        }
+
+        if (!found.getRequestHash().equals(requestHash)) {
             throw new BusinessException(ErrorCode.IDEMPOTENCY_KEY_REUSED);
         }
-        return existing;
+        // 메모는 영수증을 외래 키로 가리키므로 영수증이 없을 수 없음 → 없으면 데이터가 깨진 것
+        return Optional.of(transferRepository.findById(found.getTransferId()).orElseThrow());
+    }
+
+    /**
+     * 번호표 메모 저장: "이 번호표 → 이 영수증, 지금부터 ttlHours 동안 유효"
+     * - 돈 옮기기와 같은 트랜잭션 → 돈 옮기기가 실패하면 메모도 같이 취소됨
+     * - 같은 번호표 요청이 동시에 와서 둘 다 여기까지 오면, 늦은 쪽이 UNIQUE(uk_idempotency_key)에 걸려
+     *   트랜잭션 전체가 롤백됨 (돈도 다시 원래대로) → API에서는 409 DUPLICATE_REQUEST
+     */
+    private void saveIdempotencyKey(String idempotencyKey, String requestHash, Transfer transfer) {
+        idempotencyKeyRepository.save(IdempotencyKey.issue(
+                idempotencyKey, requestHash, transfer.getId(), Duration.ofHours(ttlHours)));
     }
 
     /**
@@ -286,9 +326,10 @@ public class TransferService {
         // 3. 바뀐 잔액을 지금 바로 DB에 반영 (flush)
         accountRepository.flush();
 
-        // 4. 송금 신청서 작성
+        // 4. 송금 신청서 작성 + 번호표 메모 (24시간 동안 같은 번호표 재전송을 막음)
         Transfer transfer = transferRepository.save(Transfer.request(
                 idempotencyKey, requestHash, type, from.getId(), to.getId(), amount));
+        saveIdempotencyKey(idempotencyKey, requestHash, transfer);
 
         // 5. 원장 두 줄 기록 (나간 쪽 DEBIT, 들어온 쪽 CREDIT)
         ledgerEntryRepository.save(LedgerEntry.record(

@@ -19,8 +19,9 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    // DB UNIQUE 제약 이름. 같은 Idempotency-Key가 두 번 저장되려 할 때 이 이름이 에러 메시지에 들어 있음
-    private static final String IDEMPOTENCY_KEY_CONSTRAINT = "uk_transfer_idempotency_key";
+    // DB UNIQUE 제약 이름. 같은 Idempotency-Key 메모가 두 번 저장되려 할 때 이 이름이 에러 메시지에 들어 있음
+    // (V7부터 중복을 막는 곳이 transfer가 아니라 번호표 메모장 idempotency_key 테이블)
+    private static final String IDEMPOTENCY_KEY_CONSTRAINT = "uk_idempotency_key";
 
     // 업무 규칙 위반 (잔액 부족, 없는 계좌 등)
     @ExceptionHandler(BusinessException.class)

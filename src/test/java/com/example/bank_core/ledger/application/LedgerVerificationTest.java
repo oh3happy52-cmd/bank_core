@@ -40,6 +40,7 @@ class LedgerVerificationTest {
     @AfterEach
     void resetDatabase() {
         jdbcTemplate.update("DELETE FROM ledger_entry");   // 원장이 transfer를 참조하므로 먼저 삭제
+        jdbcTemplate.update("DELETE FROM idempotency_key");   // 번호표 메모도 transfer를 참조하므로 먼저 삭제 (V7)
         jdbcTemplate.update("DELETE FROM transfer");
         jdbcTemplate.update("UPDATE account SET balance = 0");
     }

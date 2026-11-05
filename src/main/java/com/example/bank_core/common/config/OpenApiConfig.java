@@ -29,7 +29,7 @@ public class OpenApiConfig {
 
                                 - **사용 방법**: `인증 > 로그인`으로 토큰을 받은 뒤, 오른쪽 위 **Authorize** 버튼에 토큰을 넣으세요.
                                   (개발용 계정: `chulsoo / chulsoo1234`, `younghee / younghee1234`, 관리자 `admin / admin1234`)
-                                - 입금·이체는 `Idempotency-Key` 헤더가 필요합니다. 같은 키로 다시 보내면 처음 결과를 그대로 돌려줍니다.
+                                - 입금·이체는 `Idempotency-Key` 헤더가 필요합니다. 24시간 안에 같은 키로 다시 보내면 처음 결과를 그대로 돌려줍니다 (24시간이 지나면 새 요청으로 처리).
                                 - 에러 응답은 항상 `{code, message}` 모양입니다. 토큰 없음은 401, 권한 없음은 403입니다.
                                 - `/api/v1/admin/**` 는 관리자(ADMIN)만 사용할 수 있습니다.
                                 """))
