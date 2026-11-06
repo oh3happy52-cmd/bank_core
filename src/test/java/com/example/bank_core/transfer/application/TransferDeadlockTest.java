@@ -1,5 +1,9 @@
 package com.example.bank_core.transfer.application;
 
+// [무엇] [2주차] 데드락 실험 테스트
+// [역할] 철수→영희, 영희→철수 이체를 동시에 보낼 때, 잠금 순서를 맞추지 않으면 데드락이 나고 맞추면 안 나는지 비교
+// [누가 쓰나] ./gradlew test 실행 시 JUnit이 실행. 결과는 docs/week2-deadlock.md
+
 import com.example.bank_core.TestcontainersConfiguration;
 import com.example.bank_core.account.domain.AccountRepository;
 import org.junit.jupiter.api.Test;

@@ -1,5 +1,9 @@
 package com.example.bank_core.transfer.api;
 
+// [무엇] 이체 요청 본문(JSON)
+// [역할] 보내는 계좌, 받는 계좌, 금액을 담고 빈칸이나 0 이하 금액이면 400으로 막음(@Valid 검사)
+// [누가 쓰나] TransferController(이체 API)
+
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;

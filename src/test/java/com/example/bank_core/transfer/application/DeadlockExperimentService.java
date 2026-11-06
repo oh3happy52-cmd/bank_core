@@ -1,5 +1,9 @@
 package com.example.bank_core.transfer.application;
 
+// [무엇] [2주차] 데드락 실험 전용 서비스 (테스트 폴더에만 있음)
+// [역할] 두 계좌를 일부러 서로 다른 순서로 잠그는 이체를 흉내 내서 데드락을 재현
+// [누가 쓰나] TransferDeadlockTest만 사용. 실제 서버 코드에는 포함되지 않음
+
 import com.example.bank_core.account.domain.Account;
 import com.example.bank_core.account.domain.AccountRepository;
 import lombok.RequiredArgsConstructor;

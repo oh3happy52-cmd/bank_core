@@ -1,5 +1,9 @@
 package com.example.bank_core.transfer.application;
 
+// [무엇] [2주차] 낙관적 락 이체 동시성 테스트
+// [역할] ① 재시도 없이: 충돌한 요청은 실패하지만 잔액은 정확한지 ② 재시도 있으면: 100건 모두 성공하는지 확인
+// [누가 쓰나] ./gradlew test 실행 시 JUnit이 실행
+
 import com.example.bank_core.TestcontainersConfiguration;
 import com.example.bank_core.account.domain.AccountRepository;
 import org.junit.jupiter.api.Test;

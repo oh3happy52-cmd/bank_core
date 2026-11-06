@@ -1,0 +1,48 @@
+# [무엇] 운영 서버(EC2)용 Docker Compose 설정
+# [역할] MySQL과 앱(bank_core) 컨테이너 두 개를 한 번에 띄움
+#        - 비밀 값(DB 비밀번호, JWT 비밀 키)은 이 파일에 적지 않고 같은 폴더의 .env 파일에서 읽음 (.env는 GitHub에 안 올림)
+#        - MySQL은 외부에 포트를 열지 않음 → 앱 컨테이너만 내부 네트워크로 접속 가능
+#        - 앱은 서버의 80번(HTTP) 문으로 열어서 면접관이 http://서버주소/swagger-ui.html 로 접속
+# [누가 쓰나] 서버에서 docker compose -f docker-compose.prod.yml up -d --build 로 실행
+#            (개발용 docker-compose.yml은 Mac에서 MySQL만 띄우는 용도로 그대로 둠)
+
+services:
+  mysql:
+    image: mysql:8.4
+    container_name: bank-mysql-prod
+    restart: unless-stopped              # 서버가 재부팅돼도 자동으로 다시 켜짐
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      MYSQL_DATABASE: bank
+      MYSQL_USER: bank
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      TZ: Asia/Seoul
+    # 작은 서버(메모리 1~2GB)에 맞춰 MySQL 메모리 사용량을 줄임
+    command: ["--innodb-buffer-pool-size=128M", "--performance-schema=OFF"]
+    volumes:
+      - bank-mysql-prod-data:/var/lib/mysql   # 컨테이너를 지웠다 다시 만들어도 데이터는 남음
+    healthcheck:                         # MySQL이 접속을 받을 준비가 됐는지 10초마다 확인
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  app:
+    build: .                             # 같은 폴더의 Dockerfile로 이미지를 만듦
+    container_name: bank-app
+    restart: unless-stopped
+    depends_on:
+      mysql:
+        condition: service_healthy       # MySQL이 준비된 뒤에 앱을 켬 (먼저 켜지면 DB 연결 실패)
+    environment:
+      SPRING_PROFILES_ACTIVE: prod       # application-prod.properties를 추가로 읽음
+      # 컨테이너끼리는 서비스 이름(mysql)으로 찾아감. 포트도 컨테이너 안쪽 기본값 3306
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/bank?serverTimezone=Asia/Seoul&characterEncoding=UTF-8
+      SPRING_DATASOURCE_USERNAME: bank
+      SPRING_DATASOURCE_PASSWORD: ${DB_PASSWORD}
+      JWT_SECRET: ${JWT_SECRET}
+    ports:
+      - "80:8080"                        # 서버의 80번 문 → 컨테이너 안 앱의 8080번
+
+volumes:
+  bank-mysql-prod-data:

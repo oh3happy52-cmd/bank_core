@@ -1,5 +1,9 @@
 package com.example.bank_core.transfer.application;
 
+// [무엇] [2주차] 동시성 제어 3가지 방식 성능 비교
+// [역할] 비관적 락 / 낙관적 락+재시도 / 원자적 UPDATE를 같은 조건에서 5번씩 재서 평균·최소·최대 시간을 비교
+// [누가 쓰나] ./gradlew test 실행 시 JUnit이 실행. 결과는 docs/week2-summary.md
+
 import com.example.bank_core.TestcontainersConfiguration;
 import com.example.bank_core.account.domain.AccountRepository;
 import org.junit.jupiter.api.Test;

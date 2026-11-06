@@ -1,3 +1,7 @@
+-- [무엇] 일일 정산 결과 테이블 생성
+-- [역할] 하루치 입금·이체 건수와 합계, 원장 검사 결과를 날짜별로 한 줄씩 저장 (같은 날짜는 UNIQUE로 한 줄만)
+-- [누가 쓰나] 서버를 켤 때 Flyway가 한 번 실행. 저장은 SettlementService
+
 -- 일일 정산 결과 (하루에 한 줄)
 CREATE TABLE daily_settlement (
     id               BIGINT       NOT NULL AUTO_INCREMENT,

@@ -1,5 +1,10 @@
 package com.example.bank_core.transfer.domain;
 
+// [무엇] 이체 기록(영수증) (transfer 테이블의 한 줄)
+// [역할] 입금·이체·타행·환불 한 건마다 종류, 보낸·받은 계좌, 금액, 상태(PENDING→COMPLETED), 시각을 기록
+//        돈이 움직인 기록이므로 영구 보관 (번호표 메모는 IdempotencyKey가 24시간만 보관)
+// [누가 쓰나] TransferService(작성), SettlementService(정산 합계), InterbankTransferService(타행)
+
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;

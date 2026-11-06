@@ -1,3 +1,7 @@
+-- [무엇] 기본 테이블 3개 생성 (Flyway 1번 마이그레이션)
+-- [역할] account(계좌), transfer(이체 기록), ledger_entry(원장: 이체 1건 = 2줄)
+-- [누가 쓰나] 서버를 켤 때 Flyway가 한 번 실행
+
 -- 계좌
 CREATE TABLE account (
     id              BIGINT       NOT NULL AUTO_INCREMENT,

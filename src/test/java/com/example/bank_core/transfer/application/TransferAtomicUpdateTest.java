@@ -1,5 +1,9 @@
 package com.example.bank_core.transfer.application;
 
+// [무엇] [2주차] 원자적 UPDATE 이체 동시성 테스트
+// [역할] DB에게 "지금 잔액에서 빼라/더해라"를 시키는 방식으로 동시에 100번 이체해도 잔액이 정확한지 확인
+// [누가 쓰나] ./gradlew test 실행 시 JUnit이 실행
+
 import com.example.bank_core.TestcontainersConfiguration;
 import com.example.bank_core.account.domain.AccountRepository;
 import org.junit.jupiter.api.Test;

@@ -1,3 +1,7 @@
+-- [무엇] 기본 계좌 3개 넣기
+-- [역할] 은행 금고(SYS-CASH, 입금의 출처), 김철수(100-0001), 이영희(100-0002) 계좌를 잔액 0원으로 만듦
+-- [누가 쓰나] 서버를 켤 때 Flyway가 한 번 실행
+
 -- 테스트용 기본 통장 (잔액은 0원으로 시작, 돈은 입금 기능으로 넣음) now는 지금 시각
 INSERT INTO account (account_number, owner_name, account_type, status, balance, version, created_at, updated_at)
 VALUES

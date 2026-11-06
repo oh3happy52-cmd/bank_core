@@ -1,3 +1,7 @@
+-- [무엇] 타행 이체용 보관 계좌 + 타행 이체 진행 상황 테이블 생성
+-- [역할] SYS-INTERBANK(다른 은행에 보낼 돈을 잠시 맡는 계좌)와 interbank_transfer(요청됨/완료/모름/실패 상태 기록)를 만듦
+-- [누가 쓰나] 서버를 켤 때 Flyway가 한 번 실행. 읽고 쓰는 쪽은 InterbankTransferService
+
 -- 타행 이체용 보관 계좌: 고객 돈을 다른 은행에 보내기 전에 잠시 맡아 두는 시스템 계좌
 -- (입금용 SYS-CASH처럼 SYSTEM 계좌이고 주인은 없음)
 INSERT INTO account (account_number, owner_name, account_type, status, balance, version, created_at, updated_at)

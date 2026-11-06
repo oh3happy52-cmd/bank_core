@@ -1,3 +1,7 @@
+# [무엇] 개발용 Docker Compose 설정 (Mac에서 MySQL만 띄움)
+# [역할] MySQL 8.4를 3307 포트로 띄우고, 데이터는 볼륨에 보관 (컨테이너를 지워도 데이터는 남음)
+# [누가 쓰나] 개발할 때 docker compose up -d 로 실행. 운영 서버용은 docker-compose.prod.yml
+
 services:
   mysql:
     image: mysql:8.4

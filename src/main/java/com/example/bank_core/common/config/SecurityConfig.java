@@ -57,7 +57,10 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/api/v1/auth/login").permitAll()
                         .requestMatchers("/swagger-ui/**", "/swagger-ui.html", "/v3/api-docs/**").permitAll()
-                        .requestMatchers("/mock-bank/**").permitAll()
+                        // 모의 타행의 입금·조회 창구: 우리 서버(InterbankClient)가 토큰 없이 부르므로 열어 둠
+                        .requestMatchers("/mock-bank/deposits/**", "/mock-bank/deposits").permitAll()
+                        // 모의 타행의 실험용 창구(고장 스위치, 장부 요약, 초기화): 배포 후 아무나 고장을 켜지 못하게 관리자만
+                        .requestMatchers("/mock-bank/**").hasRole("ADMIN")
                         .requestMatchers("/api/v1/admin/**").hasRole("ADMIN")
                         .anyRequest().authenticated())
                 // 문지기가 막을 때의 응답 모양

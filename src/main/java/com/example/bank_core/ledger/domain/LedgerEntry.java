@@ -1,5 +1,10 @@
 package com.example.bank_core.ledger.domain;
 
+// [무엇] 원장 한 줄 (ledger_entry 테이블의 한 줄)
+// [역할] 돈이 움직일 때마다 "어느 계좌에서 얼마 나감(DEBIT)/들어옴(CREDIT), 그 뒤 잔액"을 기록 (이체 1건 = 2줄, 복식부기)
+//        잔액과 원장을 비교해서 돈이 새거나 생겼는지 검사할 수 있게 함
+// [누가 쓰나] TransferService(기록), LedgerVerificationService(검사)
+
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.Getter;

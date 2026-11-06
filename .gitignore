@@ -35,3 +35,6 @@ out/
 
 ### VS Code ###
 .vscode/
+
+### 운영 비밀 값 (서버에서만 만듦, GitHub에 올리지 않음) ###
+.env

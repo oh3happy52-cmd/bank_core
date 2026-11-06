@@ -1,5 +1,10 @@
 package com.example.bank_core.common.exception;
 
+// [무엇] 업무 규칙 위반 예외
+// [역할] 잔액 부족, 없는 계좌, 번호표 재사용 같은 규칙 위반을 ErrorCode와 함께 던짐
+//        → GlobalExceptionHandler가 받아서 ErrorCode에 맞는 HTTP 상태(400/403/404/422 등)로 바꿈
+// [누가 쓰나] 서비스 클래스들(TransferService, AccountService 등)
+
 import lombok.Getter;
 
 // 업무 규칙 위반 오류

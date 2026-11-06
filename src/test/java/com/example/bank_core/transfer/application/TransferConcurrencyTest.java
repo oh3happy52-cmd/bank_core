@@ -1,5 +1,9 @@
 package com.example.bank_core.transfer.application;
 
+// [무엇] [1주차] 락 없는 이체의 갱신 손실 재현 테스트 (현재 @Disabled)
+// [역할] 동시에 100번 이체할 때 락이 없으면 잔액이 틀어지는 문제(갱신 손실)를 보여 주던 기록용 테스트
+// [누가 쓰나] 지금은 실행되지 않음. 결과는 docs/week1-lost-update.md
+
 import com.example.bank_core.TestcontainersConfiguration;
 import com.example.bank_core.account.domain.AccountRepository;
 import org.junit.jupiter.api.Disabled;

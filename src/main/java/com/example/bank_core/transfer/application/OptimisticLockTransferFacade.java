@@ -1,5 +1,9 @@
 package com.example.bank_core.transfer.application;
 
+// [무엇] [2주차] 낙관적 락 이체 + 재시도 담당
+// [역할] 버전 충돌이 나면 잠깐 쉬었다가 새 트랜잭션으로 다시 시도 (최대 100번)
+// [누가 쓰나] TransferOptimisticLockTest, TransferLockBenchmarkTest (API에서는 비관적 락 방식을 씀)
+
 import com.example.bank_core.transfer.domain.Transfer;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.OptimisticLockingFailureException;

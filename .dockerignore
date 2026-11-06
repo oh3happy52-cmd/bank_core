@@ -1,0 +1,14 @@
+# [무엇] Docker 이미지를 만들 때 서버로 보내지 않을 파일 목록
+# [역할] 빌드 결과물, IDE 설정, 비밀 값(.env)이 이미지에 들어가지 않게 막음 → 이미지가 작고 안전해짐
+# [누가 쓰나] docker build가 자동으로 읽음
+build/
+bin/
+.gradle/
+.git/
+.github/
+.idea/
+.vscode/
+docs/
+scripts/
+*.md
+.env

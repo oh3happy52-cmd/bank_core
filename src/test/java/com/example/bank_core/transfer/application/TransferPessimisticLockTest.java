@@ -1,5 +1,9 @@
 package com.example.bank_core.transfer.application;
 
+// [무엇] [2주차] 비관적 락 이체 동시성 테스트
+// [역할] 동시에 100번 이체해도 SELECT ... FOR UPDATE 잠금 덕분에 잔액이 정확한지 확인 (1주차와 같은 조건)
+// [누가 쓰나] ./gradlew test 실행 시 JUnit이 실행
+
 import com.example.bank_core.TestcontainersConfiguration;
 import com.example.bank_core.account.domain.AccountRepository;
 import org.junit.jupiter.api.Test;

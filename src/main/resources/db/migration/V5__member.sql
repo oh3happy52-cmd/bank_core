@@ -1,3 +1,7 @@
+-- [무엇] 회원 테이블 생성 + 계좌에 주인 연결 + 개발용 회원 3명
+-- [역할] 로그인(JWT)과 권한(USER/ADMIN) 확인의 기준 데이터를 만듦
+-- [누가 쓰나] 서버를 켤 때 Flyway가 한 번 실행. 읽는 쪽은 AuthService(로그인), AccountService(주인 확인)
+
 -- 회원 (로그인과 권한 확인용)
 CREATE TABLE member (
     id          BIGINT        NOT NULL AUTO_INCREMENT,
