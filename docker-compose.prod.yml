@@ -6,6 +6,10 @@
 # [누가 쓰나] 서버에서 docker compose -f docker-compose.prod.yml up -d --build 로 실행
 #            (개발용 docker-compose.yml은 Mac에서 MySQL만 띄우는 용도로 그대로 둠)
 
+# 프로젝트 이름을 개발용(bank_core)과 다르게 지정
+# → 같은 폴더에서 실수로 실행해도 개발용 MySQL 컨테이너를 덮어쓰지 않음
+name: bank-core-prod
+
 services:
   mysql:
     image: mysql:8.4
