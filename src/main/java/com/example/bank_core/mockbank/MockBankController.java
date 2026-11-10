@@ -58,7 +58,7 @@ public class MockBankController {
         }
 
         if (deposit.result() == Result.REJECTED) {
-            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY)
+            return ResponseEntity.status(HttpStatus.UNPROCESSABLE_CONTENT)
                     .body(new DepositResponse(request.requestId(), "REJECTED"));
         }
         return ResponseEntity.ok(new DepositResponse(request.requestId(), "SUCCESS"));

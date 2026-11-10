@@ -2,7 +2,7 @@ package com.example.bank_core.member.domain;
 
 // [무엇] 회원 엔티티 (DB의 member 테이블 한 줄)
 // [역할] 로그인 아이디, 비밀번호 해시, 이름, 역할(USER/ADMIN)을 들고 있음
-// [누가 쓰나] 로그인 처리(AuthService, 다음 단계), MemberRepository
+// [누가 쓰나] AuthService(로그인), AdminPasswordInitializer(운영 서버 관리자 비밀번호 설정), MemberRepository
 
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -46,4 +46,9 @@ public class Member {
 
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
+
+    // 비밀번호 바꾸기: 원래 비밀번호가 아니라 BCrypt로 바꾼 해시를 받아서 저장
+    public void changePassword(String encodedPassword) {
+        this.password = encodedPassword;
+    }
 }

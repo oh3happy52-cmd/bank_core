@@ -27,8 +27,8 @@ public class AccountController {
     @Operation(summary = "계좌 조회", description = "계좌번호로 소유자, 종류, 상태, 잔액을 조회합니다. 본인 계좌만 조회할 수 있습니다 (관리자는 전체).")
     @ApiResponse(responseCode = "200", description = "조회 성공")
     @ApiResponse(responseCode = "401", description = "UNAUTHORIZED: 토큰 없음 또는 유효하지 않음")
-    @ApiResponse(responseCode = "403", description = "FORBIDDEN: 다른 사람의 계좌")
-    @ApiResponse(responseCode = "404", description = "ACCOUNT_NOT_FOUND")
+    @ApiResponse(responseCode = "403", description = "FORBIDDEN: 다른 사람의 계좌 또는 없는 계좌 (계좌 존재 여부를 알려 주지 않음)")
+    @ApiResponse(responseCode = "404", description = "ACCOUNT_NOT_FOUND (관리자가 없는 계좌를 조회한 경우만)")
     @GetMapping("/{accountNumber}")
     public AccountResponse getAccount(
             @Parameter(description = "조회할 계좌번호", example = "100-0001")

@@ -1,6 +1,7 @@
 # [무엇] 앱(bank_core)을 Docker 이미지(상자)로 만드는 설명서
 # [역할] 1단계(build): JDK로 소스를 컴파일해서 실행 파일(jar)을 만듦
 #        2단계(run): 실행에 필요한 JRE와 jar만 담아 가벼운 이미지를 만듦 (컴파일 도구·소스는 버림)
+#        실행은 root가 아닌 일반 사용자(app)로 함
 # [누가 쓰나] docker-compose.prod.yml이 서버(EC2)에서 이미지를 만들 때 사용 (docker compose up --build)
 
 # ---------- 1단계: 빌드 ----------
@@ -22,8 +23,14 @@ RUN ./gradlew bootJar --no-daemon -x test
 FROM eclipse-temurin:21-jre
 WORKDIR /app
 
-# 1단계에서 만든 jar만 가져옴
-COPY --from=build /app/build/libs/*.jar app.jar
+# 관리자(root)가 아닌 일반 사용자 계정을 만들어 그 계정으로 실행
+# → 앱에 보안 구멍이 생겨도 컨테이너 안에서 할 수 있는 일이 제한됨
+RUN groupadd --system app && useradd --system --gid app --no-create-home app
+
+# 1단계에서 만든 jar만 가져옴 (소유자를 app 사용자로)
+COPY --from=build --chown=app:app /app/build/libs/*.jar app.jar
+
+USER app
 
 EXPOSE 8080
 

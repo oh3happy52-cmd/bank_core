@@ -17,6 +17,7 @@ public enum ErrorCode {
     INVALID_AMOUNT(HttpStatus.BAD_REQUEST, "금액은 0보다 커야 합니다"),
     SAME_ACCOUNT(HttpStatus.BAD_REQUEST, "같은 계좌로는 이체할 수 없습니다"),
     MISSING_IDEMPOTENCY_KEY(HttpStatus.BAD_REQUEST, "Idempotency-Key 헤더가 필요합니다"),
+    INVALID_IDEMPOTENCY_KEY(HttpStatus.BAD_REQUEST, "Idempotency-Key는 1~64자여야 합니다"),
     SETTLEMENT_DATE_NOT_CLOSED(HttpStatus.BAD_REQUEST, "아직 끝나지 않은 날짜는 정산할 수 없습니다"),
 
     // 401: 누구인지 확인되지 않음 (인증 실패)
@@ -33,9 +34,11 @@ public enum ErrorCode {
     DUPLICATE_REQUEST(HttpStatus.CONFLICT, "같은 요청이 이미 처리 중입니다. 잠시 후 다시 시도해 주세요"),
 
     // 422: 형식은 맞지만 업무 규칙상 처리할 수 없음
-    INSUFFICIENT_BALANCE(HttpStatus.UNPROCESSABLE_ENTITY, "잔액이 부족합니다"),
-    ACCOUNT_NOT_ACTIVE(HttpStatus.UNPROCESSABLE_ENTITY, "사용할 수 없는 계좌입니다"),
-    IDEMPOTENCY_KEY_REUSED(HttpStatus.UNPROCESSABLE_ENTITY, "같은 Idempotency-Key로 다른 내용의 요청을 보낼 수 없습니다"),
+    // (Spring 7부터 422의 이름이 UNPROCESSABLE_ENTITY → UNPROCESSABLE_CONTENT로 바뀜. 숫자는 같은 422)
+    INSUFFICIENT_BALANCE(HttpStatus.UNPROCESSABLE_CONTENT, "잔액이 부족합니다"),
+    ACCOUNT_NOT_ACTIVE(HttpStatus.UNPROCESSABLE_CONTENT, "사용할 수 없는 계좌입니다"),
+    IDEMPOTENCY_KEY_REUSED(HttpStatus.UNPROCESSABLE_CONTENT, "같은 Idempotency-Key로 다른 내용의 요청을 보낼 수 없습니다"),
+    SYSTEM_ACCOUNT_NOT_ALLOWED(HttpStatus.UNPROCESSABLE_CONTENT, "은행 내부 계좌로는 입금·이체할 수 없습니다"),
 
     // 500: 예상하지 못한 서버 오류
     INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "일시적인 오류가 발생했습니다");

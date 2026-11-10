@@ -14,6 +14,8 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
 import lombok.RequiredArgsConstructor;
@@ -33,10 +35,11 @@ public class InterbankTransferController {
 
     // 타행 이체 요청 모양
     public record InterbankTransferRequest(
-            @NotBlank String fromAccountNumber,   // 보내는 우리 은행 계좌 (본인 것)
-            @NotBlank String toBankCode,          // 받는 은행 코드
-            @NotBlank String toAccountNumber,     // 받는 은행의 계좌번호 (999로 시작하면 모의 타행이 거절)
-            @NotNull @Positive Long amount
+            @NotBlank @Size(max = 20) String fromAccountNumber,   // 보내는 우리 은행 계좌 (본인 것)
+            @NotBlank @Size(max = 10) String toBankCode,          // 받는 은행 코드 (DB 칸 길이 10자)
+            @NotBlank @Size(max = 30) String toAccountNumber,     // 받는 은행의 계좌번호 (30자, 999로 시작하면 모의 타행이 거절)
+            // 금액: 0보다 크고 1회 최대 10억 원
+            @NotNull @Positive @Max(value = 1_000_000_000L, message = "1회 최대 10억 원까지 가능합니다") Long amount
     ) {
     }
 
@@ -73,7 +76,8 @@ public class InterbankTransferController {
     @ApiResponse(responseCode = "200", description = "FAILED (환불 완료)")
     @ApiResponse(responseCode = "202", description = "UNKNOWN (확인 중)")
     @ApiResponse(responseCode = "403", description = "FORBIDDEN: 보내는 계좌가 본인 것이 아님")
-    @ApiResponse(responseCode = "422", description = "INSUFFICIENT_BALANCE 등")
+    @ApiResponse(responseCode = "400", description = "INVALID_REQUEST (금액·계좌번호 형식) / INVALID_IDEMPOTENCY_KEY")
+    @ApiResponse(responseCode = "422", description = "INSUFFICIENT_BALANCE (이때는 다른 은행에 요청하지 않음) / IDEMPOTENCY_KEY_REUSED")
     @PostMapping
     public ResponseEntity<InterbankTransferResponse> send(
             @Parameter(description = "요청 번호표 (재전송 시 같은 값)", example = "ib-20261104-0001")

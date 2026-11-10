@@ -9,6 +9,7 @@ package com.example.bank_core.transfer.application;
 import com.example.bank_core.account.domain.Account;
 import com.example.bank_core.account.domain.AccountRepository;
 import com.example.bank_core.account.domain.AccountStatus;
+import com.example.bank_core.account.domain.AccountType;
 import com.example.bank_core.common.exception.BusinessException;
 import com.example.bank_core.common.exception.ErrorCode;
 import com.example.bank_core.common.security.LoginMember;
@@ -45,6 +46,9 @@ public class TransferService {
     // 타행 이체 보관 계좌. 다른 은행에 보낼 돈을 잠시 맡아 두는 시스템 계좌
     private static final String INTERBANK_ACCOUNT_NUMBER = "SYS-INTERBANK";
 
+    // 번호표(Idempotency-Key) 최대 길이. DB 칸 길이(VARCHAR(64))와 같음
+    private static final int IDEMPOTENCY_KEY_MAX_LENGTH = 64;
+
     private final AccountRepository accountRepository;
     private final TransferRepository transferRepository;
     private final LedgerEntryRepository ledgerEntryRepository;
@@ -70,6 +74,7 @@ public class TransferService {
         if (!loginMember.isAdmin()) {
             validateOwner(accountNumber, loginMember.id());
         }
+        validateNotSystemAccount(accountNumber);   // 관리자라도 은행 내부 계좌에는 입금 불가
         return deposit(idempotencyKey, accountNumber, amount);
     }
 
@@ -80,6 +85,7 @@ public class TransferService {
     public Transfer transferByMember(LoginMember loginMember, String idempotencyKey,
                                      String fromAccountNumber, String toAccountNumber, long amount) {
         validateOwner(fromAccountNumber, loginMember.id());
+        validateNotSystemAccount(toAccountNumber);   // 고객이 보관 계좌(SYS-INTERBANK) 등에 돈을 넣으면 타행 정산이 틀어짐
         return transferWithPessimisticLock(idempotencyKey, fromAccountNumber, toAccountNumber, amount);
     }
 
@@ -255,6 +261,17 @@ public class TransferService {
     }
 
     /**
+     * [API 방어] 은행 내부 계좌(SYS-CASH, SYS-INTERBANK)를 입금·이체 대상으로 쓰지 못하게 막음 → 422
+     * - 내부 계좌의 돈은 입금의 출처, 다른 은행에 보낼 돈 보관처라서 고객 요청으로 늘거나 줄면 안 됨
+     * - 내부 흐름(타행 송금·환불)은 이 검사를 거치지 않는 별도 메서드를 씀
+     */
+    private void validateNotSystemAccount(String accountNumber) {
+        if (accountRepository.existsByAccountNumberAndAccountType(accountNumber, AccountType.SYSTEM)) {
+            throw new BusinessException(ErrorCode.SYSTEM_ACCOUNT_NOT_ALLOWED, accountNumber);
+        }
+    }
+
+    /**
      * 멱등성 검사 (번호표 메모장을 봄)
      * - 메모 없음 → 빈 값 (처음 온 요청, 정상 처리하면 됨)
      * - 메모 있음 + 유효기간 지남 → 지난 메모를 지우고 빈 값 (24시간 지나서 온 같은 번호표는 새 요청)
@@ -262,6 +279,10 @@ public class TransferService {
      * - 메모 있음 + 같은 내용 → 메모에 적힌 영수증을 돌려줌 (재전송이므로 처음 결과를 다시 알려 줌)
      */
     private Optional<Transfer> findAlreadyProcessed(String idempotencyKey, String requestHash) {
+        // 번호표 길이 검사: 빈 값이나 64자 초과는 400 (그냥 두면 DB 저장 단계에서 500이 남)
+        if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > IDEMPOTENCY_KEY_MAX_LENGTH) {
+            throw new BusinessException(ErrorCode.INVALID_IDEMPOTENCY_KEY);
+        }
         Optional<IdempotencyKey> memo = idempotencyKeyRepository.findByIdempotencyKey(idempotencyKey);
         if (memo.isEmpty()) {
             return Optional.empty();

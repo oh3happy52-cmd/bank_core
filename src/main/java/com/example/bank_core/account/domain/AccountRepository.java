@@ -45,6 +45,10 @@ public interface AccountRepository extends JpaRepository<Account, Long> {
     // → 계좌 객체를 불러오지 않고 "있다/없다"만 보므로, 뒤에서 비관적 락으로 계좌를 읽을 때 옛날 값이 섞이지 않음
     boolean existsByAccountNumberAndMemberId(String accountNumber, Long memberId);
 
+    // 은행 내부 계좌(SYSTEM: SYS-CASH, SYS-INTERBANK)인지 확인 (입금·이체 대상 막기용)
+    // 계좌 객체를 불러오지 않고 "있다/없다"만 확인 → 뒤의 비관적 락 조회에 옛날 값이 섞이지 않게 함
+    boolean existsByAccountNumberAndAccountType(String accountNumber, AccountType accountType);
+
     // [타행] 계좌 id로 계좌번호 글자만 조회 (환불할 때 사용)
     // → 계좌 객체를 불러오지 않으므로, 뒤에서 비관적 락으로 계좌를 읽을 때 옛날 잔액이 섞이지 않음
     @Query("select a.accountNumber from Account a where a.id = :id")
